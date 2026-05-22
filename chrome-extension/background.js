@@ -2,6 +2,7 @@
 // Service worker: context menus, API calls, dynamic icon, page scan.
 
 const API_URL = "http://localhost:8000/predict";
+const API_UPLOAD = "http://localhost:8000/predict-upload";
 
 // ── Icon ─────────────────────────────────────────────────────────────────────
 // Draws the toolbar icon on an OffscreenCanvas — no PNG files needed.
@@ -58,6 +59,38 @@ function tell(tabId, msg) {
   chrome.tabs.sendMessage(tabId, msg).catch(() => {});
 }
 
+async function predictImage(imageUrl) {
+  try {
+    const imageRes = await fetch(imageUrl, {
+      credentials: "include",
+      cache: "force-cache"
+    });
+    if (!imageRes.ok) throw new Error(`Image fetch failed with ${imageRes.status}`);
+
+    const blob = await imageRes.blob();
+    if (!blob.type.startsWith("image/")) {
+      throw new Error(`URL did not return an image (${blob.type || "unknown type"})`);
+    }
+
+    const form = new FormData();
+    form.append("file", blob, "checked-image");
+
+    const res = await fetch(API_UPLOAD, { method: "POST", body: form });
+    if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+    return await res.json();
+  } catch (uploadErr) {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_url: imageUrl })
+    });
+    if (!res.ok) {
+      throw new Error(`${uploadErr.message}; URL fallback responded with ${res.status}`);
+    }
+    return await res.json();
+  }
+}
+
 // ── Context menus ─────────────────────────────────────────────────────────────
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -82,18 +115,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     tell(tab.id,{ type: "SHOW_LOADING", imageUrl });
 
     try {
-      const res = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_url: imageUrl })
-      });
-      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
-      const data = await res.json();
+      const data = await predictImage(imageUrl);
 
       await chrome.storage.local.set({ status: "done", result: data, imageUrl });
       const state = (data.label || "").toUpperCase() === "REAL" ? "real" : "fake";
       setIcon(state);
-      tell(tab.id,{ type: "SHOW_RESULT", result: data });
+      tell(tab.id,{ type: "SHOW_RESULT", imageUrl, result: data });
 
     } catch (err) {
       await chrome.storage.local.set({ status: "error", result: { error: err.message }, imageUrl });
@@ -120,23 +147,22 @@ async function scanImages(urls, tabId) {
 
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
+    let sentResult = false;
     try {
-      const res = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_url: url })
+      const data = await predictImage(url);
+      tell(tabId,{
+        type: "SCAN_RESULT",
+        url,
+        result: data,
+        done: i + 1,
+        total: urls.length
       });
-      if (res.ok) {
-        const data = await res.json();
-        tell(tabId,{
-          type: "SCAN_RESULT",
-          url,
-          result: data,
-          done: i + 1,
-          total: urls.length
-        });
-      }
+      sentResult = true;
     } catch (_) { /* skip unreachable images */ }
+
+    if (!sentResult) {
+      tell(tabId,{ type: "SCAN_PROGRESS", done: i + 1, total: urls.length });
+    }
 
     await new Promise(r => setTimeout(r, 150)); // avoid hammering the server
   }

@@ -29,77 +29,23 @@ document.getElementById("back-btn").addEventListener("click", () => {
   showPage("page-upload");
 });
 
-// ── Heatmap drawing ───────────────────────────────────────────────────────────
-function drawHeatmap(canvas, heatmapData) {
-  if (!heatmapData) return;
-  const rows = heatmapData.length;
-  const cols = heatmapData[0].length;
-
-  // Match canvas resolution to its displayed size
-  canvas.width  = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
-
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const cellW = canvas.width  / cols;
-  const cellH = canvas.height / rows;
-
-  heatmapData.forEach((row, i) => {
-    row.forEach((val, j) => {
-      if (val < 0.08) return;
-      const x = j * cellW;
-      const y = i * cellH;
-
-      // Yellow → orange → red gradient based on value
-      const r = 255;
-      const g = Math.round(220 * (1 - val));
-      const b = 0;
-      const a = Math.min(0.75, val * 0.85);
-
-      ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
-      ctx.fillRect(x, y, cellW, cellH);
-    });
-  });
-
-  // Smooth blur effect using CSS filter on the canvas
-  canvas.style.filter = "blur(6px)";
-}
-
-function attachHeatmapToggle(toggleBtn, canvas, heatmapData) {
-  let active = true;
-  toggleBtn.classList.add("active");
-  drawHeatmap(canvas, heatmapData);
-  canvas.classList.remove("hidden");
-
-  toggleBtn.addEventListener("click", () => {
-    active = !active;
-    canvas.classList.toggle("hidden", !active);
-    toggleBtn.classList.toggle("active", active);
-  });
-}
-
 // ── URL tab ───────────────────────────────────────────────────────────────────
-const urlInput      = document.getElementById("url-input");
-const urlBtn        = document.getElementById("url-btn");
-const urlPreview    = document.getElementById("url-preview");
-const urlPrevWrap   = document.getElementById("url-preview-wrap");
-const urlResult     = document.getElementById("url-result");
-const urlHeatmap    = document.getElementById("url-heatmap");
-const urlHmToggle   = document.getElementById("url-heatmap-toggle");
+const urlInput    = document.getElementById("url-input");
+const urlBtn      = document.getElementById("url-btn");
+const urlPreview  = document.getElementById("url-preview");
+const urlPrevWrap = document.getElementById("url-preview-wrap");
+const urlResult   = document.getElementById("url-result");
 
 urlInput.addEventListener("input", () => {
   const val = urlInput.value.trim();
   if (val.startsWith("http")) {
-    urlPreview.src     = val;
+    urlPreview.src    = val;
     urlPreview.onload  = () => urlPrevWrap.classList.remove("hidden");
     urlPreview.onerror = () => urlPrevWrap.classList.add("hidden");
   } else {
     urlPrevWrap.classList.add("hidden");
   }
   urlResult.className = "result hidden";
-  urlHeatmap.classList.add("hidden");
-  urlHmToggle.classList.add("hidden");
 });
 
 urlInput.addEventListener("keydown", e => { if (e.key === "Enter") analyzeUrl(); });
@@ -108,12 +54,8 @@ urlBtn.addEventListener("click", analyzeUrl);
 async function analyzeUrl() {
   const url = urlInput.value.trim();
   if (!url) return;
-
   urlResult.className = "result loading";
   urlResult.innerHTML = `<div class="spinner"></div><span class="loading-msg">analyzing...</span>`;
-  urlHeatmap.classList.add("hidden");
-  urlHmToggle.classList.add("hidden");
-
   try {
     const res = await fetch(API_URL, {
       method: "POST",
@@ -121,17 +63,7 @@ async function analyzeUrl() {
       body: JSON.stringify({ image_url: url })
     });
     if (!res.ok) throw new Error(`server error ${res.status}`);
-    const data = await res.json();
-
-    renderUrlResult(data);
-
-    if (data.heatmap) {
-      // Wait for image to be rendered before sizing canvas
-      requestAnimationFrame(() => {
-        attachHeatmapToggle(urlHmToggle, urlHeatmap, data.heatmap);
-        urlHmToggle.classList.remove("hidden");
-      });
-    }
+    renderUrlResult(await res.json());
   } catch (err) {
     urlResult.className = "result error";
     urlResult.innerHTML = `<div class="result-label" style="font-size:18px;color:#f59e0b;">⚠️ error</div><div class="result-sub">${err.message}</div>`;
@@ -164,7 +96,6 @@ fileInput.addEventListener("change", () => {
   addFiles([...fileInput.files]);
   fileInput.value = "";
 });
-
 fileBtn.addEventListener("click", runFileScan);
 
 function addFiles(newFiles) {
@@ -202,6 +133,7 @@ function removeFile(idx) {
 }
 
 function rebuildThumbs() {
+  // Remove all thumb items but keep the add tile
   thumbGrid.querySelectorAll(".thumb-item").forEach(el => el.remove());
   selectedFiles.forEach((f, i) => addThumb(f, i));
 }
@@ -216,13 +148,21 @@ function clearSelectedFiles() {
 function updateFileUI() {
   const n = selectedFiles.length;
   dropLimit.textContent = `${n} / ${MAX_FILES}`;
-  thumbAdd.classList.toggle("disabled", n >= MAX_FILES);
-  fileBtn.classList.toggle("hidden", n === 0);
-  if (n > 0) fileCount.textContent = `${n} image${n > 1 ? "s" : ""}`;
-  else fileCount.textContent = "";
+  if (n >= MAX_FILES) {
+    thumbAdd.classList.add("disabled");
+  } else {
+    thumbAdd.classList.remove("disabled");
+  }
+  if (n > 0) {
+    fileBtn.classList.remove("hidden");
+    fileCount.textContent = `${n} image${n > 1 ? "s" : ""}`;
+  } else {
+    fileBtn.classList.add("hidden");
+    fileCount.textContent = "";
+  }
 }
 
-// ── Results page ──────────────────────────────────────────────────────────────
+// ── Run scan → results page ───────────────────────────────────────────────────
 function clearResultsPage() {
   document.getElementById("results-grid").innerHTML = "";
   document.getElementById("results-sub").textContent = "";
@@ -231,22 +171,22 @@ function clearResultsPage() {
 async function runFileScan() {
   if (!selectedFiles.length) return;
 
+  // Build results page cards (one per file, loading state)
   const resultsGrid = document.getElementById("results-grid");
   const resultsSub  = document.getElementById("results-sub");
   resultsGrid.innerHTML = "";
   resultsSub.textContent = `${selectedFiles.length} image${selectedFiles.length > 1 ? "s" : ""} analyzed`;
 
+  // Read all files as data URLs first (for display)
   const dataUrls = await Promise.all(selectedFiles.map(readAsDataUrl));
 
-  // Create loading cards
+  // Create a card per image in loading state
   const cards = dataUrls.map((src, i) => {
     const card = document.createElement("div");
     card.className = "result-card loading";
     card.style.animationDelay = `${i * 60}ms`;
     card.innerHTML = `
-      <div class="rc-image-wrap">
-        <img class="rc-image" src="${src}" alt="Image ${i + 1}" />
-      </div>
+      <img class="rc-image" src="${src}" alt="Image ${i + 1}" />
       <div class="rc-loading">
         <div class="rc-spinner"></div>
         <span class="rc-loading-text">analyzing...</span>
@@ -255,15 +195,18 @@ async function runFileScan() {
     return card;
   });
 
+  // Navigate to results page immediately
   showPage("page-results");
 
+  // Analyze each image and update its card as results come in
   for (let i = 0; i < selectedFiles.length; i++) {
     try {
       const form = new FormData();
       form.append("file", selectedFiles[i]);
       const res  = await fetch(API_UPLOAD, { method: "POST", body: form });
       if (!res.ok) throw new Error(`server error ${res.status}`);
-      renderCard(cards[i], await res.json());
+      const data = await res.json();
+      renderCard(cards[i], data);
     } catch (err) {
       renderCardError(cards[i], err.message);
     }
@@ -280,21 +223,7 @@ function renderCard(card, data) {
   const img = card.querySelector(".rc-image");
   card.className = `result-card ${cls}`;
   card.innerHTML = "";
-
-  // Image wrap with heatmap canvas
-  const wrap = document.createElement("div");
-  wrap.className = "rc-image-wrap";
-  const canvas = document.createElement("canvas");
-  canvas.className = "heatmap-canvas hidden";
-  const toggle = document.createElement("button");
-  toggle.className = "heatmap-toggle hidden";
-  toggle.textContent = "🔥 Heatmap";
-
-  wrap.appendChild(img);
-  wrap.appendChild(canvas);
-  wrap.appendChild(toggle);
-  card.appendChild(wrap);
-
+  card.appendChild(img);
   card.insertAdjacentHTML("beforeend", `
     <div class="rc-body">
       <div class="rc-label">${icon} ${label}</div>
@@ -302,14 +231,6 @@ function renderCard(card, data) {
         <div class="rc-bar-bg"><div class="rc-bar" style="width:${conf}%"></div></div>
         <div class="rc-conf">confidence: <span>${conf}%</span></div>` : ""}
     </div>`);
-
-  // Draw heatmap after card is in DOM
-  if (data.heatmap) {
-    requestAnimationFrame(() => {
-      attachHeatmapToggle(toggle, canvas, data.heatmap);
-      toggle.classList.remove("hidden");
-    });
-  }
 }
 
 function renderCardError(card, message) {
@@ -317,10 +238,7 @@ function renderCardError(card, message) {
   card.className = "result-card";
   card.style.borderColor = "rgba(255,160,0,0.3)";
   card.innerHTML = "";
-  const wrap = document.createElement("div");
-  wrap.className = "rc-image-wrap";
-  wrap.appendChild(img);
-  card.appendChild(wrap);
+  card.appendChild(img);
   card.insertAdjacentHTML("beforeend", `
     <div class="rc-body">
       <div class="rc-label" style="font-size:16px;color:#f59e0b;">⚠️ error</div>

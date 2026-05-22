@@ -1,1 +1,8 @@
 __pycache__/
+*.pyc
+data/
+*.pth
+*.pt
+*.ckpt
+backend/resnet18_classification_config.json
+backend/resnet18_eval_report.json
