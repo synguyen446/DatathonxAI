@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "AI Image Detector",
+  "version": "1.0",
+  "description": "Detects whether an image is real or AI-generated using a local FastAPI backend.",
+
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "<all_urls>"
+  ],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AI Image Detector"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+}
