@@ -1,8 +1,31 @@
+# Byte-compiled / cache files
 __pycache__/
-*.pyc
+*.py[cod]
+
+# Virtual environments
+venv*
+*.env*
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Local data and model artifacts
 data/
+*data
 *.pth
 *.pt
 *.ckpt
 backend/resnet18_classification_config.json
 backend/resnet18_eval_report.json
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+test*
+
+# IDE files
+.vscode/
+.idea/
