@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Image Detector</title>
+  <title>Truth Lens</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,8 +12,21 @@
   <!-- ── Upload page ── -->
   <div id="page-upload" class="page active">
     <header>
-      <div class="logo"><span class="logo-icon">🤖</span> <span>AI</span>Detect</div>
-      <p class="tagline">find out if an image was made by AI or a human</p>
+      <div class="logo truth-lens-logo logo-hero">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="64" height="64">
+          <defs>
+            <linearGradient id="lensGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#1e1e2e" />
+              <stop offset="100%" stop-color="#2a2a3e" />
+            </linearGradient>
+          </defs>
+          <path d="M20 100 C 60 40, 140 40, 180 100 C 140 160, 60 160, 20 100 Z" fill="url(#lensGrad)" stroke="#7c8fff" stroke-width="12" stroke-linejoin="round"/>
+          <circle cx="100" cy="100" r="35" fill="none" stroke="#a855f7" stroke-width="12" />
+          <path d="M85 100 L95 110 L120 85" fill="none" stroke="#22c55e" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span style="background: linear-gradient(135deg, var(--text) 40%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Truth Lens</span>
+      </div>
+      <p class="tagline">your personal guard against online scams</p>
     </header>
 
     <main>
@@ -30,9 +43,7 @@
             <button id="url-btn" class="analyze-btn">Analyze</button>
           </div>
           <div id="url-preview-wrap" class="preview-wrap hidden">
-            <img id="url-preview" src="" alt="Preview" />
-            <canvas id="url-heatmap" class="heatmap-canvas hidden"></canvas>
-            <button class="heatmap-toggle hidden" id="url-heatmap-toggle">🔥 Heatmap</button>
+            <img id="url-preview" src="" alt="Preview" class="zoomable" />
           </div>
           <div id="url-result" class="result hidden"></div>
         </div>
@@ -44,7 +55,7 @@
             <label class="thumb-add" id="thumb-add" title="Add images">
               <span class="thumb-add-icon">+</span>
               <span class="thumb-add-label">Add photos</span>
-              <span class="thumb-add-count" id="drop-limit">0 / 5</span>
+              <span class="thumb-add-count" id="drop-limit">0 / 10</span>
               <input type="file" id="file-input" accept="image/*" multiple hidden />
             </label>
           </div>
@@ -54,14 +65,27 @@
       </div>
     </main>
 
-    <footer>Powered by a CNN model · <span>localhost:8000</span></footer>
+    <footer>Powered by a CNN model · <span>localhost:8001</span></footer>
   </div>
 
   <!-- ── Results page ── -->
   <div id="page-results" class="page hidden">
     <header class="results-header">
       <button id="back-btn" class="back-btn">← Back</button>
-      <div class="logo small"><span class="logo-icon">🤖</span> <span>AI</span>Detect</div>
+      <div class="logo small truth-lens-logo">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="24" height="24">
+          <defs>
+            <linearGradient id="lensGrad2" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#1e1e2e" />
+              <stop offset="100%" stop-color="#2a2a3e" />
+            </linearGradient>
+          </defs>
+          <path d="M20 100 C 60 40, 140 40, 180 100 C 140 160, 60 160, 20 100 Z" fill="url(#lensGrad2)" stroke="#7c8fff" stroke-width="12" stroke-linejoin="round"/>
+          <circle cx="100" cy="100" r="35" fill="none" stroke="#a855f7" stroke-width="12" />
+          <path d="M85 100 L95 110 L120 85" fill="none" stroke="#22c55e" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Truth Lens
+      </div>
       <div style="width:80px"></div>
     </header>
 
@@ -70,15 +94,15 @@
       <p id="results-sub" class="tagline"></p>
     </div>
 
-    <div class="heatmap-legend">
-      <span class="legend-label">Low suspicion</span>
-      <div class="legend-bar"></div>
-      <span class="legend-label">High suspicion</span>
-    </div>
-
     <div class="results-grid" id="results-grid"></div>
 
-    <footer>Powered by a CNN model · <span>localhost:8000</span></footer>
+    <footer>Powered by a CNN model · <span>localhost:8001</span></footer>
+  </div>
+
+  <!-- Lightbox -->
+  <div id="lightbox" class="lightbox hidden">
+    <div class="lightbox-backdrop"></div>
+    <img id="lightbox-img" src="" alt="" />
   </div>
 
   <script src="script.js"></script>

@@ -10,7 +10,15 @@ venv*
 build/
 dist/
 *.egg-info/
+
+# Local data and model artifacts
+data/
 *data
+*.pth
+*.pt
+*.ckpt
+backend/resnet18_classification_config.json
+backend/resnet18_eval_report.json
 
 # Testing / coverage
 .pytest_cache/

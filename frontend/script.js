@@ -1,8 +1,8 @@
 // script.js
 
-const API_URL    = "http://localhost:8000/predict";
-const API_UPLOAD = "http://localhost:8000/predict-upload";
-const MAX_FILES  = 5;
+const API_URL    = "http://localhost:8001/predict";
+const API_UPLOAD = "http://localhost:8001/predict-upload";
+const MAX_FILES  = 10;
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 document.querySelectorAll(".tab").forEach(tab => {
@@ -29,55 +29,25 @@ document.getElementById("back-btn").addEventListener("click", () => {
   showPage("page-upload");
 });
 
-// ── Heatmap drawing ───────────────────────────────────────────────────────────
-function drawHeatmap(canvas, heatmapData) {
-  if (!heatmapData) return;
-  const rows = heatmapData.length;
-  const cols = heatmapData[0].length;
+// ── Lightbox ──────────────────────────────────────────────────────────────────
+const lightbox     = document.getElementById("lightbox");
+const lightboxImg  = document.getElementById("lightbox-img");
 
-  // Match canvas resolution to its displayed size
-  canvas.width  = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
-
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const cellW = canvas.width  / cols;
-  const cellH = canvas.height / rows;
-
-  heatmapData.forEach((row, i) => {
-    row.forEach((val, j) => {
-      if (val < 0.08) return;
-      const x = j * cellW;
-      const y = i * cellH;
-
-      // Yellow → orange → red gradient based on value
-      const r = 255;
-      const g = Math.round(220 * (1 - val));
-      const b = 0;
-      const a = Math.min(0.75, val * 0.85);
-
-      ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
-      ctx.fillRect(x, y, cellW, cellH);
-    });
-  });
-
-  // Smooth blur effect using CSS filter on the canvas
-  canvas.style.filter = "blur(6px)";
+function openLightbox(src) {
+  lightboxImg.src = src;
+  lightbox.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
 }
 
-function attachHeatmapToggle(toggleBtn, canvas, heatmapData) {
-  let active = true;
-  toggleBtn.classList.add("active");
-  drawHeatmap(canvas, heatmapData);
-  canvas.classList.remove("hidden");
-
-  toggleBtn.addEventListener("click", () => {
-    active = !active;
-    canvas.classList.toggle("hidden", !active);
-    toggleBtn.classList.toggle("active", active);
-  });
+function closeLightbox() {
+  lightbox.classList.add("hidden");
+  lightboxImg.src = "";
+  document.body.style.overflow = "";
 }
+
+lightbox.querySelector(".lightbox-backdrop").addEventListener("click", closeLightbox);
+lightboxImg.addEventListener("click", closeLightbox);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeLightbox(); });
 
 // ── URL tab ───────────────────────────────────────────────────────────────────
 const urlInput      = document.getElementById("url-input");
@@ -85,10 +55,11 @@ const urlBtn        = document.getElementById("url-btn");
 const urlPreview    = document.getElementById("url-preview");
 const urlPrevWrap   = document.getElementById("url-preview-wrap");
 const urlResult     = document.getElementById("url-result");
-const urlHeatmap    = document.getElementById("url-heatmap");
-const urlHmToggle   = document.getElementById("url-heatmap-toggle");
+
+urlPreview.addEventListener("click", () => { if (urlPreview.src) openLightbox(urlPreview.src); });
 
 urlInput.addEventListener("input", () => {
+  document.querySelectorAll('.heatmap-overlay').forEach(el => el.remove());
   const val = urlInput.value.trim();
   if (val.startsWith("http")) {
     urlPreview.src     = val;
@@ -98,8 +69,6 @@ urlInput.addEventListener("input", () => {
     urlPrevWrap.classList.add("hidden");
   }
   urlResult.className = "result hidden";
-  urlHeatmap.classList.add("hidden");
-  urlHmToggle.classList.add("hidden");
 });
 
 urlInput.addEventListener("keydown", e => { if (e.key === "Enter") analyzeUrl(); });
@@ -111,8 +80,6 @@ async function analyzeUrl() {
 
   urlResult.className = "result loading";
   urlResult.innerHTML = `<div class="spinner"></div><span class="loading-msg">analyzing...</span>`;
-  urlHeatmap.classList.add("hidden");
-  urlHmToggle.classList.add("hidden");
 
   try {
     const res = await fetch(API_URL, {
@@ -124,14 +91,7 @@ async function analyzeUrl() {
     const data = await res.json();
 
     renderUrlResult(data);
-
-    if (data.heatmap) {
-      // Wait for image to be rendered before sizing canvas
-      requestAnimationFrame(() => {
-        attachHeatmapToggle(urlHmToggle, urlHeatmap, data.heatmap);
-        urlHmToggle.classList.remove("hidden");
-      });
-    }
+    applyHeatmap(document.getElementById("url-preview-wrap"), data);
   } catch (err) {
     urlResult.className = "result error";
     urlResult.innerHTML = `<div class="result-label" style="font-size:18px;color:#f59e0b;">⚠️ error</div><div class="result-sub">${err.message}</div>`;
@@ -278,22 +238,18 @@ function renderCard(card, data) {
   const icon   = isReal ? "✅" : "🤖";
 
   const img = card.querySelector(".rc-image");
+  img.classList.add("zoomable");
+  img.addEventListener("click", () => openLightbox(img.src));
+
   card.className = `result-card ${cls}`;
   card.innerHTML = "";
 
-  // Image wrap with heatmap canvas
   const wrap = document.createElement("div");
   wrap.className = "rc-image-wrap";
-  const canvas = document.createElement("canvas");
-  canvas.className = "heatmap-canvas hidden";
-  const toggle = document.createElement("button");
-  toggle.className = "heatmap-toggle hidden";
-  toggle.textContent = "🔥 Heatmap";
-
   wrap.appendChild(img);
-  wrap.appendChild(canvas);
-  wrap.appendChild(toggle);
   card.appendChild(wrap);
+  
+  applyHeatmap(wrap, data);
 
   card.insertAdjacentHTML("beforeend", `
     <div class="rc-body">
@@ -302,14 +258,6 @@ function renderCard(card, data) {
         <div class="rc-bar-bg"><div class="rc-bar" style="width:${conf}%"></div></div>
         <div class="rc-conf">confidence: <span>${conf}%</span></div>` : ""}
     </div>`);
-
-  // Draw heatmap after card is in DOM
-  if (data.heatmap) {
-    requestAnimationFrame(() => {
-      attachHeatmapToggle(toggle, canvas, data.heatmap);
-      toggle.classList.remove("hidden");
-    });
-  }
 }
 
 function renderCardError(card, message) {
@@ -334,4 +282,43 @@ function readAsDataUrl(file) {
     r.onload = e => resolve(e.target.result);
     r.readAsDataURL(file);
   });
+}
+
+// ── Heatmap Visualization ─────────────────────────────────────────────────────
+function applyHeatmap(wrap, data) {
+  // Remove any existing heatmaps
+  wrap.querySelectorAll('.heatmap-overlay').forEach(el => el.remove());
+  
+  if (!data || !data.heatmap || !data.heatmap.length) return;
+
+  const canvas = document.createElement("canvas");
+  canvas.className = "heatmap-overlay";
+  canvas.style.position = "absolute";
+  canvas.style.top = "0";
+  canvas.style.left = "0";
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
+  canvas.style.pointerEvents = "none"; // Let clicks pass through to the image
+
+  const rows = data.heatmap.length;
+  const cols = data.heatmap[0].length;
+  canvas.width = cols;
+  canvas.height = rows;
+  const ctx = canvas.getContext("2d");
+
+  const isReal = (data.label || "").toUpperCase() === "REAL";
+  // Use Green for REAL evidence, Red for FAKE evidence
+  const rgb = isReal ? "34, 197, 94" : "239, 68, 68"; 
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const val = data.heatmap[r][c];
+      // Only draw the regions the AI cared about most (val > 0.2)
+      const alpha = val > 0.2 ? val * 0.7 : 0;
+      ctx.fillStyle = `rgba(${rgb}, ${alpha})`;
+      ctx.fillRect(c, r, 1, 1);
+    }
+  }
+  wrap.style.position = "relative";
+  wrap.appendChild(canvas);
 }

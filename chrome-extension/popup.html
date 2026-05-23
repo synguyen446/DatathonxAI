@@ -1,7 +1,4 @@
 <!DOCTYPE html>
-<!-- popup.html
-     The browser-action popup (click the extension icon).
-     Shows the result of the last checked image. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -11,11 +8,24 @@
 <body>
   <div class="container">
     <div class="header">
-      <span class="logo">🤖</span>
-      <h1>AI Image Detector</h1>
+      <div class="header-left">
+        <div class="logo-wrap">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 8v4l3 3"/>
+            <path d="M8 12h.01M16 12h.01M12 8h.01M12 16h.01"/>
+          </svg>
+        </div>
+        <span class="title">AI Detector</span>
+      </div>
+      <div class="status-dot" id="status-dot"></div>
     </div>
+
     <div id="content" class="content"></div>
-    <div class="footer">Right-click any image → "Check if AI Generated"</div>
+
+    <div class="footer">
+      Right-click any image → <span class="hint">Check if AI Generated</span>
+    </div>
   </div>
   <script src="popup.js"></script>
 </body>

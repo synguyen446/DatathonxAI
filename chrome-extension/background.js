@@ -1,8 +1,8 @@
 // background.js
 // Service worker: context menus, API calls, dynamic icon, page scan.
 
-const API_URL = "http://localhost:8000/predict";
-const API_UPLOAD = "http://localhost:8000/predict-upload";
+const API_URL = "http://localhost:8001/predict";
+const API_UPLOAD = "http://localhost:8001/predict-upload";
 
 // ── Icon ─────────────────────────────────────────────────────────────────────
 // Draws the toolbar icon on an OffscreenCanvas — no PNG files needed.
@@ -25,12 +25,12 @@ function createIcon(size, bgColor = "#1e1e2e", textColor = "#7c8fff") {
   ctx.fillStyle = bgColor;
   ctx.fill();
 
-  // "AI" text
+  // "TL" text
   ctx.fillStyle = textColor;
   ctx.font = `bold ${Math.round(size * 0.42)}px Arial`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("AI", size / 2, size / 2 + size * 0.03);
+  ctx.fillText("TL", size / 2, size / 2 + size * 0.03);
 
   return ctx.getImageData(0, 0, size, size);
 }
@@ -116,12 +116,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
     try {
       const data = await predictImage(imageUrl);
-
       await chrome.storage.local.set({ status: "done", result: data, imageUrl });
       const state = (data.label || "").toUpperCase() === "REAL" ? "real" : "fake";
       setIcon(state);
-      tell(tab.id,{ type: "SHOW_RESULT", imageUrl, result: data });
-
+      tell(tab.id, { type: "SHOW_RESULT", imageUrl, result: data });
     } catch (err) {
       await chrome.storage.local.set({ status: "error", result: { error: err.message }, imageUrl });
       setIcon("default");
@@ -150,6 +148,7 @@ async function scanImages(urls, tabId) {
     let sentResult = false;
     try {
       const data = await predictImage(url);
+      sentResult = true;
       tell(tabId,{
         type: "SCAN_RESULT",
         url,
@@ -157,10 +156,9 @@ async function scanImages(urls, tabId) {
         done: i + 1,
         total: urls.length
       });
-      sentResult = true;
     } catch (_) { /* skip unreachable images */ }
 
-    if (!sentResult) {
+    if (!sentResult && i < urls.length - 1) {
       tell(tabId,{ type: "SCAN_PROGRESS", done: i + 1, total: urls.length });
     }
 
