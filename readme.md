@@ -50,8 +50,9 @@ uvicorn server:app --port 8001
 
 ---
 
-## Model (`backend/model/`)
-
-*(Coming soon)*
+## Team Members email:
+- anhnguyenphi2501@gmail.com
+- nsyn1312@gmail.com
+- shawnlin26@gmail.com
 
 ---
