@@ -25,12 +25,12 @@ function createIcon(size, bgColor = "#1e1e2e", textColor = "#7c8fff") {
   ctx.fillStyle = bgColor;
   ctx.fill();
 
-  // "AI" text
+  // "TL" text
   ctx.fillStyle = textColor;
   ctx.font = `bold ${Math.round(size * 0.42)}px Arial`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("AI", size / 2, size / 2 + size * 0.03);
+  ctx.fillText("TL", size / 2, size / 2 + size * 0.03);
 
   return ctx.getImageData(0, 0, size, size);
 }

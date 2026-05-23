@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="800" height="800">
+  <defs>
+    <linearGradient id="lensGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1e1e2e" />
+      <stop offset="100%" stop-color="#2a2a3e" />
+    </linearGradient>
+  </defs>
+  <!-- Outer Lens/Eye shape -->
+  <path d="M20 100 C 60 40, 140 40, 180 100 C 140 160, 60 160, 20 100 Z" fill="url(#lensGrad)" stroke="#7c8fff" stroke-width="12" stroke-linejoin="round"/>
+  <!-- Iris / Verification Ring -->
+  <circle cx="100" cy="100" r="35" fill="none" stroke="#a855f7" stroke-width="12" />
+  <!-- Verification Checkmark -->
+  <path d="M85 100 L95 110 L120 85" fill="none" stroke="#22c55e" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

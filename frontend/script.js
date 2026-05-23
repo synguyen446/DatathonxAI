@@ -2,7 +2,7 @@
 
 const API_URL    = "http://localhost:8001/predict";
 const API_UPLOAD = "http://localhost:8001/predict-upload";
-const MAX_FILES  = 5;
+const MAX_FILES  = 10;
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 document.querySelectorAll(".tab").forEach(tab => {

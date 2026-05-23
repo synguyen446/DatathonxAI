@@ -1,4 +1,5 @@
 import json
+import random
 from io import BytesIO
 from pathlib import Path
 from threading import Lock
@@ -8,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
+import numpy as np
 import requests
 import torch
 import torch.nn.functional as F
@@ -16,7 +18,7 @@ from torchvision import models, transforms
 
 try:
     from ultralytics import YOLO
-    yolo_detector = YOLO("yolo11n.pt")  # Using the newest YOLO11 Nano model!
+    yolo_detector = YOLO("yolo11n.pt")
 except ImportError:
     yolo_detector = None
 
@@ -32,7 +34,7 @@ FAKE_INDEX = CLASS_NAMES.index("FAKE")
 REAL_INDEX = CLASS_NAMES.index("REAL")
 IMAGE_SIZE = 32
 
-app = FastAPI(title="AI Image Detector Backend")
+app = FastAPI(title="Truth Lens Backend")
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,15 +50,7 @@ class UrlRequest(BaseModel):
 
 def build_model() -> nn.Module:
     model = models.resnet18(weights=None)
-    # This MUST be kernel_size=3 to match your current [64, 3, 3, 3] checkpoint
-    model.conv1 = nn.Conv2d(
-        in_channels=3,
-        out_channels=64,
-        kernel_size=3,
-        stride=1,
-        padding=1,
-        bias=False,
-    )
+    model.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
     model.maxpool = nn.Identity()
     model.fc = nn.Sequential(
         nn.Dropout(0.2),
@@ -76,7 +70,6 @@ transform = transforms.Compose(
     ]
 )
 
-# New transform to look at raw pixel data without resizing blur
 patch_transform = transforms.Compose(
     [
         transforms.CenterCrop(IMAGE_SIZE),
@@ -85,7 +78,6 @@ patch_transform = transforms.Compose(
     ]
 )
 
-# Dynamically load the mathematically optimal threshold if it exists
 OPTIMAL_THRESHOLD = 0.60
 if CONFIG_PATH.exists():
     try:
@@ -103,7 +95,6 @@ model_lock = Lock()
 def load_checkpoint() -> bool:
     if not CHECKPOINT_PATH.exists():
         return False
-
     state_dict = torch.load(CHECKPOINT_PATH, map_location=DEVICE)
     model.load_state_dict(state_dict, strict=True)
     return True
@@ -123,17 +114,15 @@ def read_image_bytes(data: bytes) -> Image.Image:
 def download_image(url: str) -> Image.Image:
     if not url.lower().startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="image_url must start with http or https")
-
     try:
         response = requests.get(
             url,
             timeout=10,
-            headers={"User-Agent": "AIImageDetector/1.0"},
+            headers={"User-Agent": "TruthLens/1.0"},
         )
         response.raise_for_status()
     except requests.RequestException as exc:
         raise HTTPException(status_code=400, detail=f"Could not download image: {exc}") from exc
-
     return read_image_bytes(response.content)
 
 
@@ -178,9 +167,55 @@ def grad_cam(image_tensor: torch.Tensor, class_index: int) -> list[list[float]]:
         backward_handle.remove()
 
 
+PATCH_VARIANCE_THRESHOLD = 50.0
+
+
+def patch_has_content(patch: Image.Image) -> bool:
+    arr = np.array(patch.convert("L"), dtype=np.float32)
+    return float(arr.var()) >= PATCH_VARIANCE_THRESHOLD
+
+
+def extract_native_patches(image: Image.Image, n_random: int = 6) -> list[Image.Image]:
+    """Extract 32x32 patches at native resolution, skipping low-variance (dark/flat) ones."""
+    w, h = image.size
+    if w < IMAGE_SIZE or h < IMAGE_SIZE:
+        return []
+
+    s = IMAGE_SIZE
+    anchors = [
+        (0, 0),
+        (w - s, 0),
+        (0, h - s),
+        (w - s, h - s),
+        ((w - s) // 2, (h - s) // 2),
+    ]
+    for _ in range(n_random):
+        x = random.randint(0, w - s)
+        y = random.randint(0, h - s)
+        anchors.append((x, y))
+
+    patches = [image.crop((x, y, x + s, y + s)) for x, y in anchors]
+    return [p for p in patches if patch_has_content(p)]
+
+
+def score_views(views: list[Image.Image], patch_normalize: bool = False) -> list[float]:
+    """Run ResNet18 on a list of views with TTA flips, return fake scores."""
+    scores = []
+    norm = patch_transform if patch_normalize else transform
+    for view in views:
+        view_tensor = norm(view).unsqueeze(0).to(DEVICE)
+        flipped = torch.flip(view_tensor, [3])
+        batch = torch.cat([view_tensor, flipped])
+        with torch.no_grad():
+            logits = model(batch)
+            probs = torch.softmax(logits, dim=1)
+            scores.extend(probs[:, FAKE_INDEX].tolist())
+    return scores
+
+
 def predict_image(image: Image.Image) -> dict:
-    # 1. Determine views (Original + YOLO Crop)
-    views = [image]
+    # YOLO crops — focus on the largest detected objects
+    yolo_views = []
     if yolo_detector is not None:
         results = yolo_detector(image, verbose=False)
         detected_boxes = []
@@ -188,56 +223,55 @@ def predict_image(image: Image.Image) -> dict:
             for box in result.boxes.xyxy:
                 x1, y1, x2, y2 = map(int, box.tolist())
                 detected_boxes.append((x1, y1, x2, y2))
-                
-        # Check up to the 5 largest detected objects in the image
         detected_boxes = sorted(detected_boxes, key=lambda b: (b[2]-b[0])*(b[3]-b[1]), reverse=True)[:5]
-        
-        for box in detected_boxes:
-            views.append(image.crop(box))
+        yolo_views = [image.crop(box) for box in detected_boxes]
 
-    # We use the original image (views[0]) for the main tensor and Grad-CAM so the whole image is highlighted
-    primary_view = views[0]
-    image_tensor = transform(primary_view).unsqueeze(0).to(DEVICE)
-    image_tensor.requires_grad_(True) 
+    # Native-resolution 32x32 patches across the full image
+    native_patches = extract_native_patches(image)
 
-    fake_scores = []
+    primary_tensor = transform(image).unsqueeze(0).to(DEVICE)
+    primary_tensor.requires_grad_(True)
+
     with model_lock:
-        for view in views:
-            # View 1: Resized to 32x32 (Global context)
-            view_tensor = transform(view).unsqueeze(0).to(DEVICE)
-            
-            # View 2: Raw 32x32 center patch (Local texture context) - only if image is big enough
-            if view.width > IMAGE_SIZE and view.height > IMAGE_SIZE:
-                view_patch = patch_transform(view).unsqueeze(0).to(DEVICE)
-                batch = torch.cat([view_tensor, view_patch])
-            else:
-                batch = view_tensor
-            
-            # TTA: Horizontal Flips
-            batch_flipped = torch.flip(batch, [3])
-            full_batch = torch.cat([batch, batch_flipped])
-            
-            with torch.no_grad():
-                logits = model(full_batch)
-                probs = torch.softmax(logits, dim=1)
-                # Extract the FAKE probabilities for all versions of this view
-                fake_scores.extend(probs[:, FAKE_INDEX].tolist())
+        global_scores = score_views([image])
+        if image.width > IMAGE_SIZE and image.height > IMAGE_SIZE:
+            center_scores = score_views([image], patch_normalize=True)
+        else:
+            center_scores = []
 
-        # ACCURACY IMPROVEMENT: Average the top 5 highest fake scores.
-        # This requires more consistency than top 3, smoothing out noisy camera patches 
-        # while still being highly sensitive to genuine AI artifacts.
-        # detecting AI artifacts across multiple views/flips.
-        fake_scores.sort(reverse=True)
-        top_k = min(5, len(fake_scores))
-        fake_probability = sum(fake_scores[:top_k]) / top_k if fake_scores else 0.0
-        
-        # Use the objectively calculated threshold (or fallback default)
+        yolo_scores = score_views(yolo_views) if yolo_views else []
+        patch_scores = score_views(native_patches) if native_patches else []
+
+        def top_mean(scores: list[float], k: int) -> float | None:
+            if not scores:
+                return None
+            top = sorted(scores, reverse=True)[:k]
+            return sum(top) / len(top)
+
+        components = []
+        full_img_score = top_mean(global_scores + center_scores, 3)
+        if full_img_score is not None:
+            components.append((full_img_score, 2.0))
+
+        yolo_score = top_mean(yolo_scores, 3)
+        if yolo_score is not None:
+            components.append((yolo_score, 1.0))
+
+        patch_score = top_mean(patch_scores, 5)
+        if patch_score is not None:
+            components.append((patch_score, 1.0))
+
+        if components:
+            total_weight = sum(w for _, w in components)
+            fake_probability = sum(s * w for s, w in components) / total_weight
+        else:
+            fake_probability = 0.0
+
         classification_threshold = OPTIMAL_THRESHOLD
         class_index = FAKE_INDEX if fake_probability >= classification_threshold else REAL_INDEX
         confidence = fake_probability if class_index == FAKE_INDEX else 1.0 - fake_probability
-        
-        # Run Grad-CAM
-        heatmap = grad_cam(image_tensor, class_index)
+
+        heatmap = grad_cam(primary_tensor, class_index)
 
     return {
         "label": CLASS_NAMES[class_index],

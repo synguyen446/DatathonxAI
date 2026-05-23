@@ -69,6 +69,18 @@ header {
 .logo-icon { font-size: 24px; }
 .logo span { color: var(--accent); }
 
+.logo-hero { display: flex; justify-content: center; align-items: center; gap: 16px; font-weight: 900; font-size: 46px; color: var(--text); letter-spacing: -1.5px; margin-bottom: 8px; }
+.truth-lens-logo { transition: transform 0.3s ease; }
+.truth-lens-logo:hover { transform: translateY(-2px); }
+.truth-lens-logo svg {
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.3s ease;
+  filter: drop-shadow(0px 8px 16px rgba(168, 85, 247, 0.35));
+}
+.truth-lens-logo:hover svg {
+  transform: scale(1.15) rotate(-5deg);
+  filter: drop-shadow(0px 12px 24px rgba(168, 85, 247, 0.6));
+}
+
 .tagline {
   margin-top: 8px;
   color: var(--muted);
