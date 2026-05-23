@@ -1,7 +1,7 @@
 // script.js
 
-const API_URL    = "http://localhost:8000/predict";
-const API_UPLOAD = "http://localhost:8000/predict-upload";
+const API_URL    = "http://localhost:8001/predict";
+const API_UPLOAD = "http://localhost:8001/predict-upload";
 const MAX_FILES  = 5;
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
@@ -24,8 +24,6 @@ function showPage(id) {
 }
 
 document.getElementById("back-btn").addEventListener("click", () => {
-  clearSelectedFiles();
-  clearResultsPage();
   showPage("page-upload");
 });
 
@@ -37,6 +35,7 @@ const urlPrevWrap = document.getElementById("url-preview-wrap");
 const urlResult   = document.getElementById("url-result");
 
 urlInput.addEventListener("input", () => {
+  document.querySelectorAll('.heatmap-overlay').forEach(el => el.remove());
   const val = urlInput.value.trim();
   if (val.startsWith("http")) {
     urlPreview.src    = val;
@@ -64,6 +63,7 @@ async function analyzeUrl() {
     });
     if (!res.ok) throw new Error(`server error ${res.status}`);
     renderUrlResult(await res.json());
+    applyHeatmap(document.getElementById("url-preview-wrap"), await res.json());
   } catch (err) {
     urlResult.className = "result error";
     urlResult.innerHTML = `<div class="result-label" style="font-size:18px;color:#f59e0b;">⚠️ error</div><div class="result-sub">${err.message}</div>`;
@@ -138,13 +138,6 @@ function rebuildThumbs() {
   selectedFiles.forEach((f, i) => addThumb(f, i));
 }
 
-function clearSelectedFiles() {
-  selectedFiles = [];
-  fileInput.value = "";
-  rebuildThumbs();
-  updateFileUI();
-}
-
 function updateFileUI() {
   const n = selectedFiles.length;
   dropLimit.textContent = `${n} / ${MAX_FILES}`;
@@ -158,16 +151,10 @@ function updateFileUI() {
     fileCount.textContent = `${n} image${n > 1 ? "s" : ""}`;
   } else {
     fileBtn.classList.add("hidden");
-    fileCount.textContent = "";
   }
 }
 
 // ── Run scan → results page ───────────────────────────────────────────────────
-function clearResultsPage() {
-  document.getElementById("results-grid").innerHTML = "";
-  document.getElementById("results-sub").textContent = "";
-}
-
 async function runFileScan() {
   if (!selectedFiles.length) return;
 
@@ -223,7 +210,14 @@ function renderCard(card, data) {
   const img = card.querySelector(".rc-image");
   card.className = `result-card ${cls}`;
   card.innerHTML = "";
-  card.appendChild(img);
+  
+  const wrap = document.createElement("div");
+  wrap.className = "rc-image-wrap";
+  wrap.appendChild(img);
+  card.appendChild(wrap);
+  
+  applyHeatmap(wrap, data);
+  
   card.insertAdjacentHTML("beforeend", `
     <div class="rc-body">
       <div class="rc-label">${icon} ${label}</div>
@@ -252,4 +246,39 @@ function readAsDataUrl(file) {
     r.onload = e => resolve(e.target.result);
     r.readAsDataURL(file);
   });
+}
+
+// ── Heatmap Visualization ─────────────────────────────────────────────────────
+function applyHeatmap(wrap, data) {
+  wrap.querySelectorAll('.heatmap-overlay').forEach(el => el.remove());
+  if (!data || !data.heatmap || !data.heatmap.length) return;
+
+  const canvas = document.createElement("canvas");
+  canvas.className = "heatmap-overlay";
+  canvas.style.position = "absolute";
+  canvas.style.top = "0";
+  canvas.style.left = "0";
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
+  canvas.style.pointerEvents = "none";
+
+  const rows = data.heatmap.length;
+  const cols = data.heatmap[0].length;
+  canvas.width = cols;
+  canvas.height = rows;
+  const ctx = canvas.getContext("2d");
+
+  const isReal = (data.label || "").toUpperCase() === "REAL";
+  const rgb = isReal ? "34, 197, 94" : "239, 68, 68";
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const val = data.heatmap[r][c];
+      const alpha = val > 0.2 ? val * 0.7 : 0;
+      ctx.fillStyle = `rgba(${rgb}, ${alpha})`;
+      ctx.fillRect(c, r, 1, 1);
+    }
+  }
+  wrap.style.position = "relative";
+  wrap.appendChild(canvas);
 }

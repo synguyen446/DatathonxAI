@@ -30,9 +30,7 @@
             <button id="url-btn" class="analyze-btn">Analyze</button>
           </div>
           <div id="url-preview-wrap" class="preview-wrap hidden">
-            <img id="url-preview" src="" alt="Preview" />
-            <canvas id="url-heatmap" class="heatmap-canvas hidden"></canvas>
-            <button class="heatmap-toggle hidden" id="url-heatmap-toggle">🔥 Heatmap</button>
+            <img id="url-preview" src="" alt="Preview" class="zoomable" />
           </div>
           <div id="url-result" class="result hidden"></div>
         </div>
@@ -70,15 +68,15 @@
       <p id="results-sub" class="tagline"></p>
     </div>
 
-    <div class="heatmap-legend">
-      <span class="legend-label">Low suspicion</span>
-      <div class="legend-bar"></div>
-      <span class="legend-label">High suspicion</span>
-    </div>
-
     <div class="results-grid" id="results-grid"></div>
 
     <footer>Powered by a CNN model · <span>localhost:8000</span></footer>
+  </div>
+
+  <!-- Lightbox -->
+  <div id="lightbox" class="lightbox hidden">
+    <div class="lightbox-backdrop"></div>
+    <img id="lightbox-img" src="" alt="" />
   </div>
 
   <script src="script.js"></script>
