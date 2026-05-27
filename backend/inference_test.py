@@ -2,22 +2,28 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
 import torch
-import torch.nn as nn
 from models.resnet18 import *
-from PIL import Image
+import numpy as np
 
 
 BATCH_SIZE = 1
 
-def scan_32_x_32_grid(tensor):
-    pass
+def scan_grid(tensor,stride=16,grid_size=32):
+    W, H = tensor.shape[2],tensor.shape[3]
+    tensor = tensor.squeeze(0)
+    stacked_grid = []
+    for i in range(0,W-grid_size+1,stride):
+        for j in range(0,H-grid_size+1,stride):
+            stacked_grid.append(tensor[:,i:i+stride,j:j+stride])
+    return torch.stack(stacked_grid)
+
 
 def main():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     test_transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Resize((32,32)),
+        transforms.Resize((1024,1024)),
         transforms.Normalize(
             mean=[0.485, 0.456, 0.406],
             std=[0.229, 0.224, 0.225]
@@ -31,23 +37,32 @@ def main():
 
     model = resnet18(rn18_weights, device)
 
-    total_accuracy = 0
+    total_correct = 0
     trials = len(test_set)//BATCH_SIZE
 
 
-    for image, label in test_loader:
-        image = image.to(device)
-        label = label.to(device)
-
-        logits = model(image)
-        prob = torch.softmax(logits, dim=1)
-        predicted_class = torch.argmax(prob,dim=1)
+    for image_tensor, label in test_loader:
+        grid_tensor = scan_grid(image_tensor)
         
-        correct = (predicted_class==label).sum().item()
+        label = label.to(device)
+        grid_tensor = grid_tensor.to(device)
 
-        total_accuracy += correct
+        logits = model(grid_tensor)
+        prob = torch.softmax(logits, dim=1)
+        
+        predicted_classes = torch.argmax(prob,dim=1)
+        correct_score = predicted_classes.sum().item()
+        authenticity_score = correct_score/len(grid_tensor)
 
-    print(f'Final testing accuracy: {total_accuracy/trials:.2f}%')
+        if authenticity_score < 0.4:
+            predicted_label = 0
+        else:
+            predicted_label = 1
+        
+        if predicted_label == label:
+            total_correct += 1
+
+    print(f'Final testing accuracy: {total_correct/trials:.2f}%')
 
 
 if __name__ == "__main__":
